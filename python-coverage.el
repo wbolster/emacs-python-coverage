@@ -12,14 +12,8 @@
 
 ;;; Commentary:
 
-;; Show Python coverage results in source files.
-
-;; todo defcustom for use-magit-faces
-;; todo use 'error 'or 'diff-refine-removed face
-;; todo don't (forward-line) from (point-min), maybe use (-zip-pair) for relative jumps
-;; todo on-save-hook?
-;; todo merge adjacent overlays
-;; todo M-x python-coverage-overview
+;; Show Python coverage results in source files,
+;; using overlays or with a Flycheck checker.
 
 ;;; Code:
 
@@ -40,6 +34,28 @@
   "Default file name to use when looking for coverage results."
   :group 'python-coverage
   :type 'string)
+
+(defface python-coverage-overlay-missing
+  '((t :inherit magit-diff-removed))
+  "Overlay face for missing coverage."
+  :group 'python-coverage)
+
+(defface python-coverage-overlay-partial
+  '((t :inherit magit-diff-base))
+  "Overlay face for partial (branch) coverage."
+  :group 'python-coverage)
+
+(defface python-coverage-overlay-missing-outdated
+  '((t :strike-through t
+       :inherit python-coverage-overlay-missing))
+  "Overlay face for potentially outdated missing coverage."
+  :group 'python-coverage)
+
+(defface python-coverage-overlay-partial-outdated
+  '((t :strike-through t
+       :inherit python-coverage-overlay-partial))
+  "Overlay face for potentially outdated partial (branch) coverage."
+  :group 'python-coverage)
 
 (defvar-local python-coverage--coverage-file-name nil
   "Coverage file to use for the current buffer.")
@@ -65,8 +81,10 @@ This is only needed if autodetection does not work."
       (progn
         (python-coverage-overlay-refresh)
         (add-hook 'kill-buffer-hook 'python-coverage--overlay-remove-watch nil t)
+        (add-hook 'after-save-hook 'python-coverage--mark-as-outdated)
         (python-coverage--overlay-add-watch))
     (python-coverage--overlay-remove-watch)
+    (remove-hook 'after-save-hook 'python-coverage--mark-as-outdated)
     (python-coverage-overlay-remove-all)))
 
 ;;;###autoload
@@ -265,21 +283,25 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
 
 (defun python-coverage--merge-adjacent (coverage-info)
   "Merge adjacent lines into blocks in COVERAGE-INFO."
-  ;; todo
+  ;; todo merge adjacent overlays
+  ;; (--each (-zip (cons nil coverage-info) coverage-info)
+  ;;   (-let* (((previous . current) it))))
   coverage-info)
 
 ;; Internal helpers for overlays
 
 (defun python-coverage--overlay-make-all (coverage-info)
   "Create all overlays for COVERAGE-INFO."
-  ;; (let ((previous-overlay))
-  ;;   (--each (-zip (cons nil coverage-info) coverage-info)
-  ;;     (-let* (((previous . current) it)
-  ;;             (overlay (python-coverage--overlay-make current))))))
-  (-each coverage-info 'python-coverage--overlay-make))
+  (let ((outdated? (python-coverage--coverage-file-outdated?)))
+    (--each coverage-info
+      (python-coverage--overlay-make it outdated?))))
 
-(defun python-coverage--overlay-make (info)
-  "Make an overlay for coverage INFO."
+(defun python-coverage--overlay-make (info outdated)
+  "Make an overlay for coverage INFO.
+
+If OUTDATED is non-nil, use a different style."
+  ;; todo: don't repeatedly (forward-line) from (point-min)
+  ;; maybe use (-zip-pair) for relative jumps?
   (save-restriction
     (widen)
     (-let* (((&plist :line-beg :status) info)
@@ -295,9 +317,16 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
                (goto-char beg)
                (python-nav-end-of-statement)
                (1+ (point))))
-            (face (pcase status
-                    ('missing 'magit-diff-removed)
-                    ('partial 'magit-diff-base)))
+            (face
+             (pcase status
+               ('missing
+                (if outdated
+                    'python-coverage-overlay-missing-outdated
+                  'python-coverage-overlay-missing))
+               ('partial
+                (if outdated
+                    'python-coverage-overlay-partial-outdated
+                  'python-coverage-overlay-partial))))
             (overlay
              (-doto (make-overlay beg end)
                (overlay-put 'evaporate t)
@@ -328,6 +357,16 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
             'python-coverage--overlay-watch-on-change
             (current-buffer)))))
     (setq python-coverage--overlay-watch watch)))
+
+(defun python-coverage--mark-as-outdated ()
+  "Mark all overlays as outdated."
+  (--each (python-coverage--overlays-in)
+    (let* ((face (overlay-get it 'face))
+           (new-face
+            (pcase face
+              ('python-coverage-overlay-missing 'python-coverage-overlay-missing-outdated)
+              ('python-coverage-overlay-partial 'python-coverage-overlay-partial-outdated))))
+      (overlay-put it 'face new-face))))
 
 (defun python-coverage--overlay-remove-watch ()
   "Remove the file watch on the coverage file."

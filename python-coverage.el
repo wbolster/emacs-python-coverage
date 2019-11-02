@@ -19,11 +19,6 @@
 ;; todo don't (forward-line) from (point-min), maybe use (-zip-pair) for relative jumps
 ;; todo on-save-hook?
 ;; todo merge adjacent overlays
-;; todo warn when file newer than coverage.xml
-;; todo kill-buffer-hook to cancel timer
-;; todo file-notify-add-watch
-;; todo file-notify-rm-watch
-;; todo https://stackoverflow.com/questions/24007822/emacs-creating-deleting-a-buffer-local-repeating-idle-timer
 ;; todo M-x python-coverage-overview
 
 ;;; Code:
@@ -69,9 +64,9 @@ This is only needed if autodetection does not work."
   (if python-coverage-overlay-mode
       (progn
         (python-coverage-overlay-refresh)
-        (add-hook 'kill-buffer-hook 'python-coverage--overlay-unwatch nil t)
-        (python-coverage--overlay-watch))
-    (python-coverage--overlay-unwatch)
+        (add-hook 'kill-buffer-hook 'python-coverage--overlay-remove-watch nil t)
+        (python-coverage--overlay-add-watch))
+    (python-coverage--overlay-remove-watch)
     (python-coverage-overlay-remove-all)))
 
 ;;;###autoload
@@ -121,8 +116,9 @@ This is only needed if autodetection does not work."
 (defun python-coverage-current-buffer ()
   "Obtain coverage info for the current buffer."
   (-when-let*
-      ((coverage-file-name (python-coverage--find-coverage-file-current-buffer))
-       (tree (python-coverage--parse-coverage-xml-file coverage-file-name))
+      ((coverage-file (python-coverage--find-coverage-file-current-buffer))
+       (non-empty? (> (python-coverage--file-size coverage-file) 0))
+       (tree (python-coverage--parse-coverage-xml-file coverage-file))
        (coverage-info (python-coverage--get-missing-file-coverage tree (buffer-file-name))))
     coverage-info))
 
@@ -159,15 +155,20 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
   "Return t when the coverage file for FILE-NAME is outdated."
   (unless file-name (setq file-name (buffer-file-name)))
   (let* ((coverage-file (python-coverage--find-coverage-file-current-buffer))
-         (coverage-mtime (python-coverage--mtime coverage-file))
-         (file-mtime (python-coverage--mtime file-name)))
+         (coverage-mtime (python-coverage--file-mtime coverage-file))
+         (file-mtime (python-coverage--file-mtime file-name)))
     (< coverage-mtime file-mtime)))
 
-(defun python-coverage--mtime (file-name)
+(defun python-coverage--file-mtime (file-name)
   "Get the mtime of FILE-NAME as a float."
   (->> (file-attributes file-name)
        (nth 5)
        (float-time)))
+
+(defun python-coverage--file-size (file-name)
+  "Get the size of FILE-NAME."
+  (->> (file-attributes file-name)
+       (nth 7)))
 
 ;; Internal helpers for handling the coverage XML format
 
@@ -316,7 +317,7 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
          (--filter (<= (overlay-end it) end))
          (-sort (-on '< 'overlay-start)))))
 
-(defun python-coverage--overlay-watch ()
+(defun python-coverage--overlay-add-watch ()
   "Watch the coverage file to automatically refresh overlays."
   (let* ((coverage-file (python-coverage--find-coverage-file-current-buffer))
          (watch
@@ -328,23 +329,19 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
             (current-buffer)))))
     (setq python-coverage--overlay-watch watch)))
 
-(defun python-coverage--overlay-unwatch ()
-  "Unwatch the coverage file."
+(defun python-coverage--overlay-remove-watch ()
+  "Remove the file watch on the coverage file."
   (when (and python-coverage--overlay-watch
              (file-notify-valid-p python-coverage--overlay-watch))
     (file-notify-rm-watch python-coverage--overlay-watch))
   (setq python-coverage--overlay-watch nil))
 
 (defun python-coverage--overlay-watch-on-change (buffer _event)
-  "Change event handler.
+  "Change event handler for file watching.
 
 The EVENT causes the overlays in BUFFER to get refreshed."
-  ;; todo; timer actually needed?
-  (run-with-idle-timer
-   1 nil
-   (lambda ()
-     (with-current-buffer buffer
-       (python-coverage-overlay-refresh)))))
+  (with-current-buffer buffer
+    (python-coverage-overlay-refresh)))
 
 ;; Internal helpers for flycheck
 

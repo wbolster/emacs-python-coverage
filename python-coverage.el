@@ -30,6 +30,7 @@
 
 (require 'dash)
 (require 'dash-functional)
+(require 'filenotify)
 (require 'python)
 (require 's)
 (require 'xml)
@@ -45,16 +46,8 @@
   :group 'python-coverage
   :type 'string)
 
-(defcustom python-coverage-overlay-refresh-interval 5
-  "Time between automatic refreshes of the coverage overlay."
-  :group 'python-coverage
-  :type 'integer)
-
 (defvar-local python-coverage--coverage-file-name nil
   "Coverage file to use for the current buffer.")
-
-(defvar-local python-coverage--coverage-file-mtime 0.
-  "Modified time of the coverage file used in the current buffer.")
 
 (defvar-local python-coverage--overlay-watch nil
   "File watch for automatic overlay refreshing.")
@@ -76,6 +69,7 @@ This is only needed if autodetection does not work."
   (if python-coverage-overlay-mode
       (progn
         (python-coverage-overlay-refresh)
+        (add-hook 'kill-buffer-hook 'python-coverage--overlay-unwatch nil t)
         (python-coverage--overlay-watch))
     (python-coverage--overlay-unwatch)
     (python-coverage-overlay-remove-all)))
@@ -341,11 +335,16 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
     (file-notify-rm-watch python-coverage--overlay-watch))
   (setq python-coverage--overlay-watch nil))
 
-(defun python-coverage--overlay-watch-on-change (buffer event)
-  "Handler for a change EVENT for changed coverage file."
-  (with-current-buffer buffer
-    (-let [(descriptor action file) event]
-      (python-coverage-overlay-refresh))))
+(defun python-coverage--overlay-watch-on-change (buffer _event)
+  "Change event handler.
+
+The EVENT causes the overlays in BUFFER to get refreshed."
+  ;; todo; timer actually needed?
+  (run-with-idle-timer
+   1 nil
+   (lambda ()
+     (with-current-buffer buffer
+       (python-coverage-overlay-refresh)))))
 
 ;; Internal helpers for flycheck
 

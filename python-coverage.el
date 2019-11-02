@@ -2,7 +2,7 @@
 
 ;; Author: wouter bolsterlee <wouter@bolsterl.ee>
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "25") (dash "2.16.0") (dash-functional "1.2.0") (s "1.12.0") (xml+ "1"))
+;; Package-Requires: ((emacs "25.1") (dash "2.16.0") (dash-functional "1.2.0") (s "1.12.0") (xml+ "1"))
 ;; Keywords: languages, processes, tools
 ;; URL: https://github.com/wbolster/emacs-python-coverage
 
@@ -56,11 +56,8 @@
 (defvar-local python-coverage--coverage-file-mtime 0.
   "Modified time of the coverage file used in the current buffer.")
 
-(defvar-local python-coverage--overlay-timer nil
-  "Timer for automatic overlay refreshing.")
-
 (defvar-local python-coverage--overlay-watch nil
-  "Timer for automatic overlay refreshing.")
+  "File watch for automatic overlay refreshing.")
 
 ;; Public interface
 
@@ -78,8 +75,9 @@ This is only needed if autodetection does not work."
   :lighter " PyCov"
   (if python-coverage-overlay-mode
       (progn
-        (python-coverage--overlay-install-timer))
-    (python-coverage--overlay-cancel-timer)
+        (python-coverage-overlay-refresh)
+        (python-coverage--overlay-watch))
+    (python-coverage--overlay-unwatch)
     (python-coverage-overlay-remove-all)))
 
 ;;;###autoload
@@ -279,15 +277,11 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
 
 (defun python-coverage--overlay-make-all (coverage-info)
   "Create all overlays for COVERAGE-INFO."
-  (let ((previous-overlay))
-    (--each (-zip (cons nil coverage-info) coverage-info)
-      (-let* (((previous . current) it)
-              (overlay (python-coverage--overlay-make current))))))
-  ;; (-each coverage-info 'python-coverage--overlay-make)
-  )
-
-;; (-zip (cons nil '(1 2 3)) '(1 2 3))
-;; (cdr (cons 1 2))
+  ;; (let ((previous-overlay))
+  ;;   (--each (-zip (cons nil coverage-info) coverage-info)
+  ;;     (-let* (((previous . current) it)
+  ;;             (overlay (python-coverage--overlay-make current))))))
+  (-each coverage-info 'python-coverage--overlay-make))
 
 (defun python-coverage--overlay-make (info)
   "Make an overlay for coverage INFO."
@@ -328,18 +322,30 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
          (--filter (<= (overlay-end it) end))
          (-sort (-on '< 'overlay-start)))))
 
-(defun python-coverage--overlay-install-timer ()
-  "Install the timer to refresh overlays."
-  (setq python-coverage--overlay-timer
-        (run-at-time
-         nil python-coverage-overlay-refresh-interval
-         #'python-coverage-overlay-refresh)))
+(defun python-coverage--overlay-watch ()
+  "Watch the coverage file to automatically refresh overlays."
+  (let* ((coverage-file (python-coverage--find-coverage-file-current-buffer))
+         (watch
+          (file-notify-add-watch
+           coverage-file
+           '(change attribute-change)
+           (-partial
+            'python-coverage--overlay-watch-on-change
+            (current-buffer)))))
+    (setq python-coverage--overlay-watch watch)))
 
-(defun python-coverage--overlay-cancel-timer ()
-  "Cancel the timer."
-  (-some-> python-coverage--overlay-timer
-           (cancel-timer))
-  (setq python-coverage--overlay-timer nil))
+(defun python-coverage--overlay-unwatch ()
+  "Unwatch the coverage file."
+  (when (and python-coverage--overlay-watch
+             (file-notify-valid-p python-coverage--overlay-watch))
+    (file-notify-rm-watch python-coverage--overlay-watch))
+  (setq python-coverage--overlay-watch nil))
+
+(defun python-coverage--overlay-watch-on-change (buffer event)
+  "Handler for a change EVENT for changed coverage file."
+  (with-current-buffer buffer
+    (-let [(descriptor action file) event]
+      (python-coverage-overlay-refresh))))
 
 ;; Internal helpers for flycheck
 

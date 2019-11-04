@@ -41,7 +41,7 @@
   :group 'python-coverage)
 
 (defface python-coverage-overlay-partial
-  '((t :inherit magit-diff-base))
+  '((t :inherit magit-diff-removed-highlight))
   "Overlay face for partial (branch) coverage."
   :group 'python-coverage)
 

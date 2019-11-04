@@ -35,6 +35,16 @@
   :group 'python-coverage
   :type 'string)
 
+(defcustom python-coverage-overlay-width nil
+  "Maximum width of the overlays.
+
+If nil, highlight the whole statement. If a number, highlight up
+to that number of characters, or until the end of line, whichever
+comes first. Practically, a small number such as 2 will result in
+non-obtrusive colored blocks adjacent to the left margin."
+  :group 'python-coverage
+  :type '(choice integer (const :tag "Complete line" nil)))
+
 (defface python-coverage-overlay-missing
   '((t :inherit magit-diff-removed))
   "Overlay face for missing coverage."
@@ -313,10 +323,19 @@ If OUTDATED is non-nil, use a different style."
                (point)))
             (end
              (save-excursion
-               (widen)
                (goto-char beg)
-               (python-nav-end-of-statement)
-               (1+ (point))))
+               (if python-coverage-overlay-width
+                   (min
+                    (line-end-position)
+                    (progn
+                      (forward-char python-coverage-overlay-width)
+                      (point)))
+                 (python-nav-end-of-statement)
+                 (1+ (point)))))
+            (end
+             ;; At least one character. This should only happen for
+             ;; outdated overlays on empty lines.
+             (max end (1+ beg)))
             (face
              (pcase status
                ('missing

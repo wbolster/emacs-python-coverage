@@ -453,8 +453,8 @@ The EVENT causes the overlays in BUFFER to get refreshed."
               (--map
                (python-coverage--flycheck-error it checker)
                coverage-info)))
-        (prog1 context
-          (funcall callback 'finished errors)))
+        (funcall callback 'finished errors)
+        context)
     (error
      (funcall callback 'errored (error-message-string err))
      (signal (car err) (cdr err)))))

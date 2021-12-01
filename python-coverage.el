@@ -50,19 +50,19 @@ non-obtrusive colored blocks adjacent to the left margin."
   :group 'python-coverage)
 
 (defface python-coverage-overlay-partial
-  '((t :inherit magit-diff-added))
+  '((t :inherit magit-diff-base))
   "Overlay face for partial (branch) coverage."
   :group 'python-coverage)
 
 (defface python-coverage-overlay-missing-outdated
   '((t :strike-through t
-       :inherit python-coverage-overlay-missing))
+       :inherit magit-diff-context-highlight))
   "Overlay face for potentially outdated missing coverage."
   :group 'python-coverage)
 
 (defface python-coverage-overlay-partial-outdated
   '((t :strike-through t
-       :inherit python-coverage-overlay-partial))
+       :inherit magit-diff-context-highlight))
   "Overlay face for potentially outdated partial (branch) coverage."
   :group 'python-coverage)
 

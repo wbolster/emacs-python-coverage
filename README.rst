@@ -39,7 +39,7 @@ Coverage data
 This package reads the XML output produced by Python's ``coverage``
 package. Usually this file is named ``coverage.xml``.
 
-With plain `coverage`::
+With plain `coverage`:
 
 .. code-block:: shell
 

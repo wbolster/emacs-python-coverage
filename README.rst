@@ -10,6 +10,13 @@ Best used together with `python-pytest.el`__.
 
 __ https://github.com/wbolster/emacs-python-pytest
 
+
+Screenshot
+==========
+
+.. image:: screenshot.png
+   :alt: mandatory screenshot
+
 Overlays
 ========
 

@@ -133,6 +133,7 @@ This is only needed if autodetection does not work."
       (goto-char (overlay-start overlay))
     (user-error "No more coverage overlays in this direction")))
 
+;;;###autoload
 (defun python-coverage-overlay-jump-first ()
   "Jump to the first overlay."
   (interactive)

@@ -90,10 +90,10 @@ This is only needed if autodetection does not work."
       (progn
         (python-coverage-overlay-refresh)
         (add-hook 'kill-buffer-hook #'python-coverage--overlay-remove-watch nil t)
-        (add-hook 'after-save-hook #'python-coverage--mark-as-outdated)
+        (add-hook 'after-save-hook #'python-coverage--mark-as-outdated nil t)
         (python-coverage--overlay-add-watch))
     (python-coverage--overlay-remove-watch)
-    (remove-hook 'after-save-hook #'python-coverage--mark-as-outdated)
+    (remove-hook 'after-save-hook #'python-coverage--mark-as-outdated t)
     (python-coverage-overlay-remove-all)))
 
 ;;;###autoload

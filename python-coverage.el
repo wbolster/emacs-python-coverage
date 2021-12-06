@@ -334,22 +334,18 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
   "Make an overlay for coverage INFO.
 
 If OUTDATED is non-nil, use a different style."
-  ;; todo: don't repeatedly (forward-line) from (point-min)
-  ;; maybe use (-zip-pair) for relative jumps?
   (save-restriction
     (widen)
     (-let* (((&plist :line-beg :line-end :status) info)
             (beg
              (save-excursion
                (goto-char (point-min))
-               (--dotimes (1- line-beg)
-                 (forward-line))
+               (forward-line (1- line-beg))
                (point)))
             (end
              (save-excursion
                (goto-char beg)
-               (--dotimes (- line-end line-beg)
-                 (forward-line))
+               (forward-line (- line-end line-beg))
                (if python-coverage-overlay-width
                    (min
                     (line-end-position)

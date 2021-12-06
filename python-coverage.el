@@ -261,10 +261,11 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
 (defun python-coverage--extract-lines (class-node)
   "Extract info about lines that are not fully covered from CLASS-NODE."
   (->> (xml+-query-all class-node '((class) > (lines) > (line)))
+       (nreverse)
        (-map 'python-coverage--transform-line-node)
-       (-map 'python-coverage--merge-adjacent)
        (--remove (eq (plist-get it :status) 'covered))
-       (-sort (-on '< (-rpartial 'plist-get :line-beg)))))
+       (-sort (-on '< (-rpartial 'plist-get :line-beg)))
+       (python-coverage--merge-adjacent)))
 
 (defun python-coverage--transform-line-node (line-node)
   "Transform a LINE-NODE (‘<line ...>’) into a simple structure."
@@ -290,11 +291,36 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
     result))
 
 (defun python-coverage--merge-adjacent (coverage-info)
-  "Merge adjacent lines into blocks in COVERAGE-INFO."
-  ;; todo merge adjacent overlays
-  ;; (--each (-zip (cons nil coverage-info) coverage-info)
-  ;;   (-let* (((previous . current) it))))
-  coverage-info)
+  "Merge adjacent lines in COVERAGE-INFO into larger blocks."
+  (nreverse
+   (--reduce-from
+    (-if-let* ((previous (first acc))
+               (current it)
+               (previous-line (plist-get previous :line-end))
+               (current-line (plist-get it :line-beg))
+               (same-status? (eq (plist-get previous :status)
+                                 (plist-get current :status)))
+               (adjacent? (eql (- current-line previous-line) 1))
+               (replacement-head (plist-put previous :line-end current-line)))
+        (cons replacement-head (cdr acc))
+      (cons it acc))
+    nil
+    coverage-info)))
+
+;; useful for debugging:
+;; (setq tmp-input
+;;       '((:line-beg 3 :line-end 3 :status missing)
+;;         (:line-beg 4 :line-end 4 :status missing)
+;;         (:line-beg 5 :line-end 5 :status missing)
+;;         (:line-beg 8 :line-end 8 :status missing)
+;;         (:line-beg 10 :line-end 10 :status missing)
+;;         (:line-beg 11 :line-end 11 :status missing)
+;;         (:line-beg 12 :line-end 12 :status missing)
+;;         (:line-beg 13 :line-end 13 :status missing)
+;;         (:line-beg 15 :line-end 15 :status missing)
+;;         (:line-beg 16 :line-end 16 :status missing)))
+;; (python-coverage--merge-adjacent tmp-input)
+
 
 ;; Internal helpers for overlays
 

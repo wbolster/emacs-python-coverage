@@ -1,4 +1,4 @@
-;;; python-coverage.el --- Python coverage support -*- lexical-binding: t; -*-
+;;; python-coverage.el --- Show Python coverage via overlays or Flycheck -*- lexical-binding: t; -*-
 
 ;; Author: wouter bolsterlee <wouter@bolsterl.ee>
 ;; Version: 1.0.0

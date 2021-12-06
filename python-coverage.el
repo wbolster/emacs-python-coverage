@@ -312,7 +312,7 @@ If OUTDATED is non-nil, use a different style."
   ;; maybe use (-zip-pair) for relative jumps?
   (save-restriction
     (widen)
-    (-let* (((&plist :line-beg :status) info)
+    (-let* (((&plist :line-beg :line-end :status) info)
             (beg
              (save-excursion
                (goto-char (point-min))
@@ -322,6 +322,8 @@ If OUTDATED is non-nil, use a different style."
             (end
              (save-excursion
                (goto-char beg)
+               (--dotimes (- line-end line-beg)
+                 (forward-line))
                (if python-coverage-overlay-width
                    (min
                     (line-end-position)

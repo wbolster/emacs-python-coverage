@@ -8,7 +8,7 @@
 
 ;;; License:
 
-;; 3-clause "New BSD"; see readme for details.
+;; BSD-3-clause License
 
 ;;; Commentary:
 

@@ -1,9 +1,7 @@
-License
-=======
+BSD-3-clause License
+====================
 
-*(This is the OSI approved 3-clause "New BSD license".)*
-
-Copyright 2019 wouter bolsterlee
+Copyright © 2019, wouter bolsterlee
 
 All rights reserved.
 

@@ -294,7 +294,7 @@ This tries all SOURCE-PATHS and compares that to FILE-NAME."
   "Merge adjacent lines in COVERAGE-INFO into larger blocks."
   (nreverse
    (--reduce-from
-    (-if-let* ((previous (first acc))
+    (-if-let* ((previous (car acc))
                (current it)
                (previous-line (plist-get previous :line-end))
                (current-line (plist-get it :line-beg))

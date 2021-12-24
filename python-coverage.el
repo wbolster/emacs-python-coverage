@@ -420,8 +420,9 @@ If OUTDATED is non-nil, use a different style."
   "Change event handler for file watching.
 
 The EVENT causes the overlays in BUFFER to get refreshed."
-  (with-current-buffer buffer
-    (python-coverage-overlay-refresh)))
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (python-coverage-overlay-refresh))))
 
 ;; Internal helpers for flycheck
 

@@ -21,16 +21,23 @@
 (require 'filenotify)
 (require 'python)
 (require 's)
+(require 'sqlite3)
 (require 'xml)
 (require 'xml+)
+(require 'cl-lib)
 
 (defgroup python-coverage nil
   "Python coverage"
   :group 'python
   :prefix "python-coverage")
 
-(defcustom python-coverage-default-file-name "coverage.xml"
-  "Default file name to use when looking for coverage results."
+(defcustom python-coverage-default-xml-file-name "coverage.xml"
+  "Default file name to use when looking for coverage XML report."
+  :group 'python-coverage
+  :type 'string)
+
+(defcustom python-coverage-default-sqlite-file-name ".coverage"
+  "Default file name to use when looking for coverage SQLite file."
   :group 'python-coverage
   :type 'string)
 
@@ -143,10 +150,14 @@ This is only needed if autodetection does not work."
   "Obtain coverage info for the current buffer."
   (-when-let*
       ((coverage-file (python-coverage--find-coverage-file-current-buffer))
-       (non-empty? (> (python-coverage--file-size coverage-file) 0))
-       (tree (python-coverage--parse-coverage-xml-file coverage-file))
-       (coverage-info (python-coverage--get-missing-file-coverage tree (buffer-file-name))))
-    coverage-info))
+       (non-empty? (> (python-coverage--file-size coverage-file) 0)))
+    ;; Prefer XML because coveragepy includes some analysis about blank lines,
+    ;; docstrings etc.
+    (if (python-coverage--is-xml coverage-file)
+        (-when-let
+            (tree (python-coverage--parse-coverage-xml-file coverage-file))
+          (python-coverage--get-missing-file-coverage tree (buffer-file-name)))
+      (python-coverage--query-missing-file-coverage coverage-file (buffer-file-name)))))
 
 ;; Internal helpers for handling files
 
@@ -161,10 +172,15 @@ This is only needed if autodetection does not work."
   "Find a coverage file for SOURCE-FILE-NAME."
   (or
    python-coverage--coverage-file-name
-   (-some->
-    (python-coverage--locate-dominating-file source-file-name python-coverage-default-file-name)
-    (file-name-as-directory)
-    (s-concat python-coverage-default-file-name))
+   (or
+    (-some->
+        (python-coverage--locate-dominating-file source-file-name python-coverage-default-xml-file-name)
+      (file-name-as-directory)
+      (s-concat python-coverage-default-xml-file-name))
+    (-some->
+        (python-coverage--locate-dominating-file source-file-name python-coverage-default-sqlite-file-name)
+      (file-name-as-directory)
+      (s-concat python-coverage-default-sqlite-file-name)))
    (error "Could not find coverage file. (Hint: use ‘M-x python-coverage-select-coverage-file’ to choose manually.)")))
 
 (declare-function projectile-locate-dominating-file "projectile" (file name))
@@ -196,7 +212,89 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
   (->> (file-attributes file-name)
        (nth 7)))
 
+;; Internal helpers for handling the SQLite coverage format
+
+(defun python-coverage--query-missing-file-coverage (coverage-file python-file-name)
+  (-when-let*
+      ((dbh (sqlite3-open coverage-file sqlite-open-readonly))
+       ;; Use hex() for the BLOB data because the sqlite3 bindings don't
+       ;; seem to have another way to pass binary data through.
+       (stmt (sqlite3-prepare dbh "
+              SELECT DISTINCT hex(numbits)
+              FROM line_bits
+                INNER JOIN file ON line_bits.file_id = file.id
+              WHERE path = ?")))
+    (sqlite3-bind-text stmt 1 python-file-name)
+    (let* ((nums ()))
+      (while (= sqlite-row (sqlite3-step stmt))
+        (-let
+            [(hex-numbits) (sqlite3-fetch stmt)]
+          (setq nums (cl-union nums (python-coverage--numbits-to-nums (python-coverage--hex-to-bytes hex-numbits)) (python-coverage--hex-numbits-to-nums hex-numbits)))))
+      (sqlite3-finalize stmt)
+      (sqlite3-close dbh)
+
+      ;; Convert the 'hits=1' lines we've got into 'missing' lines.
+      ;; We reproduce a little bit of the analysis done by coveragepy:
+      ;; - empty lines shouldn't count as missing
+      (with-temp-buffer
+        (insert-file-contents python-file-name)
+        (let* ((line-count (count-lines (point-min) (point-max)))
+               (empty-source-lines (python-coverage--get-empty-source-lines))
+               (missing-lines
+                (cl-set-difference (number-sequence 1 (+ 1 line-count))
+                                   (cl-union nums empty-source-lines))))
+          (python-coverage--merge-adjacent
+           (mapcar (lambda (num)
+                     (list :line-beg num :line-end num :status 'missing))
+                   missing-lines)))))))
+
+(defun python-coverage--get-empty-source-lines ()
+  (save-excursion
+    (let ((empty-lines ())
+          (line-num 1))
+      (goto-char (point-min))
+      (while (not (eobp))
+        (beginning-of-line)
+        (when (looking-at-p "[[:blank:]]*$")
+          (setq empty-lines (cons line-num empty-lines)))
+        (forward-line)
+        (setq line-num (1+ line-num)))
+      empty-lines)))
+
+(defun python-coverage--hex-to-bytes (hexstring)
+  "Convert string containing hex pairs (e.g. \"bc3509\") into vector of integers (bytes) for each pair"
+  (vconcat (mapcar (lambda (pair)
+                     (string-to-number (concat pair) 16))
+                   (-partition 2 (string-to-list hexstring)))))
+
+
+(defun python-coverage--numbits-to-nums (numbits)
+  "Convert vector of integers (bytes) into list of numbers, as per the coveragepy function"
+  ;; Follows the Python version fairly closely for simplicity
+  (let ((nums ()))
+
+    (dotimes (byte-i (length numbits))
+      (let ((byte (elt numbits byte-i)))
+        (dotimes (bit-i 8)
+          (when (> (logand byte (ash 1 bit-i)) 0)
+            (setq nums (cons (+ (* byte-i 8) bit-i) nums))))))
+
+    (reverse nums)))
+
+(ert-deftest python-coverage--test-numbits-to-nums ()
+  ;; Used Python version as oracle
+  (should (equal (python-coverage--numbits-to-nums
+                  (python-coverage--hex-to-bytes "DA5BCD70BE1024939024024000000008"))
+                 '(1 3 4 6 7 8 9 11 12 14 16 18 19 22 23 28 29 30 33 34 35
+                     36 37 39 44 50 53 56 57 60 63 68 71 74 77 81 94 123))))
+
 ;; Internal helpers for handling the coverage XML format
+
+(defun python-coverage--is-xml (file-name)
+  (with-temp-buffer
+    (insert-file-contents file-name nil 0 5)
+    (string= (buffer-substring-no-properties 1 6) "<?xml")))
+
 
 (defun python-coverage--parse-xml-file (name)
   "Parse an XML file NAME."
@@ -422,7 +520,10 @@ If OUTDATED is non-nil, use a different style."
 The EVENT causes the overlays in BUFFER to get refreshed."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
-      (python-coverage-overlay-refresh))))
+      ;; File events for deletion of `.coverage` file can trigger this,
+      ;; in which case overlays will fail. We want to ignore that.
+      (ignore-errors
+        (python-coverage-overlay-refresh)))))
 
 ;; Internal helpers for flycheck
 

@@ -43,10 +43,12 @@ Run ``flycheck-select-checker``, pick ``python-coverage``.
 Coverage data
 =============
 
-This package reads the XML output produced by Python's ``coverage``
-package. Usually this file is named ``coverage.xml``.
+This package can read both the SQLite ``.coverage`` file created by Python’s
+``coverage`` package, and the XML report it produces. The latter is preferred if
+present, because the ``coverage xml`` command does some additional analysis to
+ignore docstrings etc.
 
-With plain `coverage`:
+With plain ``coverage``, generate the XML file like this:
 
 .. code-block:: shell
 
@@ -61,7 +63,7 @@ With ``pytest-cov``, pass ``--cov-report=xml``, e.g. via ``pyproject.toml``:
     "--cov=your-package",
     "--cov=test",
     "--cov-report=xml",
-  ]
+
 
 Customization
 =============
@@ -73,7 +75,8 @@ Command for manual coverage file selection:
 Customizable settings (see their description for details) in the
 ``python-coverage`` group, e.g. via ``M-x customize-group``:
 
-- ``python-coverage-default-file-name``
+- ``python-coverage-default-xml-file-name``
+- ``python-coverage-default-sqlite-file-name``
 - ``python-coverage-overlay-width``
 
 Styling via custom faces, e.g. via ``M-x customize-face``:

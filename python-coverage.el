@@ -216,7 +216,8 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
 
 (defun python-coverage--query-missing-file-coverage (coverage-file python-file-name)
   (-when-let*
-      ((dbh (sqlite3-open coverage-file sqlite-open-readonly))
+      ((dbh-version (python-coverage--open-coverage-db coverage-file))
+       (dbh (car dbh-version))
        ;; Use hex() for the BLOB data because the sqlite3 bindings don't
        ;; seem to have another way to pass binary data through.
        (stmt (sqlite3-prepare dbh "
@@ -247,6 +248,21 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
            (mapcar (lambda (num)
                      (list :line-beg num :line-end num :status 'missing))
                    missing-lines)))))))
+
+(defun python-coverage--open-coverage-db (coverage-file)
+  "Open coverage-file as a SQLite database, check the schema version, returning a 2-list (handle version)"
+  ;; We return the version number because in the future calling functions
+  ;; may need to issue different SQL statements based on this.
+  (-when-let*
+      ((dbh (sqlite3-open coverage-file sqlite-open-readonly))
+       (stmt (sqlite3-prepare dbh "SELECT version FROM coverage_schema;")))
+    (sqlite3-step stmt)
+    (-let
+        [(version) (sqlite3-fetch stmt)]
+      (when (/= version 7)
+        (message (format "python-coverage might not correctly support the schema version in your .coverage file - version %d. " version)))
+      (sqlite3-finalize stmt)
+      (list dbh version))))
 
 (defun python-coverage--get-empty-source-lines ()
   (save-excursion

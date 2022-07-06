@@ -230,7 +230,7 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
       (while (= sqlite-row (sqlite3-step stmt))
         (-let
             [(hex-numbits) (sqlite3-fetch stmt)]
-          (setq nums (cl-union nums (python-coverage--numbits-to-nums (python-coverage--hex-to-bytes hex-numbits)) (python-coverage--hex-numbits-to-nums hex-numbits)))))
+          (setq nums (cl-nunion nums (python-coverage--hex-numbits-to-nums hex-numbits)))))
       (sqlite3-finalize stmt)
       (sqlite3-close dbh)
 
@@ -243,11 +243,35 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
                (empty-source-lines (python-coverage--get-empty-source-lines))
                (missing-lines
                 (cl-set-difference (number-sequence 1 (+ 1 line-count))
-                                   (cl-union nums empty-source-lines))))
+                                   (cl-nunion nums empty-source-lines))))
           (python-coverage--merge-adjacent
            (mapcar (lambda (num)
                      (list :line-beg num :line-end num :status 'missing))
                    missing-lines)))))))
+
+
+(defun python-coverage--query-coverage-contexts (coverage-file python-file-name line-nums)
+  "Use the SQLite coverage database COVERAGE-FILE to get the contexts that cover PYTHON-FILE-NAME lines LINE-NUMS"
+  (-when-let*
+      ((dbh-version (python-coverage--open-coverage-db coverage-file))
+       (dbh (car dbh-version))
+       (stmt (sqlite3-prepare dbh "
+              SELECT context, hex(numbits)
+              FROM context
+                INNER JOIN line_bits ON line_bits.context_id = context.id
+                INNER JOIN file on line_bits.file_id = file.id
+              WHERE path = ? AND context IS NOT NULL AND context != '';")))
+    (sqlite3-bind-text stmt 1 python-file-name)
+    (let* ((contexts ()))
+      (while (= sqlite-row (sqlite3-step stmt))
+        (-let*
+            (((context hex-numbits) (sqlite3-fetch stmt))
+             (covered-line-nums (python-coverage--hex-numbits-to-nums hex-numbits)))
+          (when (cl-intersection line-nums covered-line-nums)
+            (setq contexts (cons context contexts)))))
+      (sqlite3-finalize stmt)
+      (sqlite3-close dbh)
+      (seq-uniq contexts))))
 
 (defun python-coverage--open-coverage-db (coverage-file)
   "Open coverage-file as a SQLite database, check the schema version, returning a 2-list (handle version)"
@@ -297,10 +321,12 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
 
     (reverse nums)))
 
+(defun python-coverage--hex-numbits-to-nums (hex-numbits)
+  (python-coverage--numbits-to-nums (python-coverage--hex-to-bytes hex-numbits)))
+
 (ert-deftest python-coverage--test-numbits-to-nums ()
   ;; Used Python version as oracle
-  (should (equal (python-coverage--numbits-to-nums
-                  (python-coverage--hex-to-bytes "DA5BCD70BE1024939024024000000008"))
+  (should (equal (python-coverage--hex-numbits-to-nums "DA5BCD70BE1024939024024000000008")
                  '(1 3 4 6 7 8 9 11 12 14 16 18 19 22 23 28 29 30 33 34 35
                      36 37 39 44 50 53 56 57 60 63 68 71 74 77 81 94 123))))
 

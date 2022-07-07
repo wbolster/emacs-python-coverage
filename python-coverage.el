@@ -159,24 +159,57 @@ This is only needed if autodetection does not work."
           (python-coverage--get-missing-file-coverage tree (buffer-file-name)))
       (python-coverage--query-missing-file-coverage coverage-file (buffer-file-name)))))
 
+(defun python-coverage-rerun-pytest-current-region ()
+  "Re-run the relevant pytest tests accoring to recorded 'context' information.
+   This requires that pytest was run with --cov-context=test previously.
+   Current region or current line in current buffer is used."
+  (interactive)
+  (-when-let*
+      ((coverage-file (python-coverage--find-coverage-file-current-buffer t))
+       (python-file-name (buffer-file-name))
+       (line-nums (if (region-active-p)
+                      (apply 'number-sequence
+                             (sort (list (line-number-at-pos (mark))
+                                         (line-number-at-pos (point)))
+                                   '<))
+                    (list (line-number-at-pos (point)))))
+       (contexts (or (python-coverage--query-coverage-contexts coverage-file python-file-name line-nums)
+                     (error "No related test contexts found for current region"))))
+    ;; In pytest, test contexts look like this:
+    ;;
+    ;;  path/to/src/module.py::TestClassName::test_method_name|run
+    ;;
+    ;; The last part can also be `setup` or `teardown`. For now, we assume that
+    ;; any of these could be relevant.
+    ;; (print (mapcar (lambda (item) (car (s-split "\|" item))) contexts))))
+    (-let [file-test-args (mapcar (lambda (item) (car (s-split "\|" item))) contexts)]
+      (print "Contexts:")
+      (print contexts)
+      (print "File test args:")
+      (print file-test-args)
+      (python-pytest--run
+       :args file-test-args
+       :edit current-prefix-arg))))
+
 ;; Internal helpers for handling files
 
-(defun python-coverage--find-coverage-file-current-buffer ()
+(defun python-coverage--find-coverage-file-current-buffer (&optional sqlite-only)
   "Find a coverage file for the current buffer."
   (-let [source-file-name
          (or (buffer-file-name)
              (error "Cannot detect source file name; buffer is not visiting a file"))]
-    (python-coverage--find-coverage-file source-file-name)))
+    (python-coverage--find-coverage-file source-file-name sqlite-only)))
 
-(defun python-coverage--find-coverage-file (source-file-name)
+(defun python-coverage--find-coverage-file (source-file-name &optional sqlite-only)
   "Find a coverage file for SOURCE-FILE-NAME."
   (or
    python-coverage--coverage-file-name
    (or
-    (-some->
-        (python-coverage--locate-dominating-file source-file-name python-coverage-default-xml-file-name)
-      (file-name-as-directory)
-      (s-concat python-coverage-default-xml-file-name))
+    (when (not sqlite-only)
+      (-some->
+          (python-coverage--locate-dominating-file source-file-name python-coverage-default-xml-file-name)
+        (file-name-as-directory)
+        (s-concat python-coverage-default-xml-file-name)))
     (-some->
         (python-coverage--locate-dominating-file source-file-name python-coverage-default-sqlite-file-name)
       (file-name-as-directory)

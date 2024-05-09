@@ -6,6 +6,9 @@ This is an experimental Emacs package to report code coverage output
 produced by Python's ``coverage`` package directly inside Emacs
 buffers.
 
+``coverage``'s xml output follows the cobertura format, it should work with
+similar reports from other tools, like C/C++ with ``gcovr``.
+
 Best used together with `python-pytest.el`__.
 
 __ https://github.com/wbolster/emacs-python-pytest

@@ -145,7 +145,7 @@ This is only needed if autodetection does not work."
       ((coverage-file (python-coverage--find-coverage-file-current-buffer))
        (non-empty? (> (python-coverage--file-size coverage-file) 0))
        (tree (python-coverage--parse-coverage-xml-file coverage-file))
-       (coverage-info (python-coverage--get-missing-file-coverage tree (buffer-file-name))))
+       (coverage-info (python-coverage--get-missing-file-coverage tree (buffer-file-name) coverage-file)))
     coverage-info))
 
 ;; Internal helpers for handling files
@@ -216,25 +216,24 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
       (error "Unknown XML file format; root element should be <coverage>"))
     tree))
 
-(defun python-coverage--get-missing-file-coverage (tree file-name)
+(defun python-coverage--get-missing-file-coverage (tree file-name coverage-file)
   "Get the missing coverage for FILE-NAME from TREE."
-  (-when-let (class-node (python-coverage--find-class-node tree file-name))
+  (-when-let (class-node (python-coverage--find-class-node tree file-name coverage-file))
     (python-coverage--extract-lines class-node)))
 
-(defun python-coverage--find-class-node (tree file-name)
-  "Find the <class> XML node in TREE for the specified FILE-NAME."
+(defun python-coverage--find-class-node (tree file-name coverage-file)
+  "Find the <class> XML node in TREE for the specified FILE-NAME"
   ;; Unfortunately, the XML does not contain full file paths. Find all
   ;; <class name=...> elements for the base file name, then check if
   ;; any of them matches when combined with any of the source paths.
   (-if-let*
       ((file-name-without-directory (file-name-nondirectory file-name))
-       (query `((coverage) > (packages) > (package) > (classes) >
-                (class :name ,file-name-without-directory)))
+       (query `((coverage) > (packages) > (package) > (classes) > (class)))
        (class-node-candidates (xml+-query-all tree query))
        (source-paths (python-coverage--get-source-paths tree))
        (class-node
         (--first
-         (python-coverage--class-node-matches-file-name? it file-name source-paths)
+         (python-coverage--class-node-matches-file-name? it file-name source-paths coverage-file)
          class-node-candidates)))
       class-node
     (error "Coverage file contains no information for file ‘%s’" file-name)))
@@ -244,16 +243,18 @@ FILE and NAME are handled like ‘locate-dominating-file’ does."
   (->> (xml+-query-all tree '((coverage) > (sources) > (source)))
        (-map 'xml+-node-text)))
 
-(defun python-coverage--class-node-matches-file-name? (class-node file-name source-paths)
+(defun python-coverage--class-node-matches-file-name? (class-node file-name source-paths coverage-file)
   "Check whether CLASS-NODE is about FILE-NAME.
 
-This tries all SOURCE-PATHS and compares that to FILE-NAME."
+This tries all SOURCE-PATHS and compares that to FILE-NAME.
+COVERAGE-FILE path is needed to convert the source directory from relative to absolute."
   ;; The ‘filename=...’ attribute contains a relative file name
   ;; starting at any of the source directories.
   (-let [relative-file-name
          (or (xml-get-attribute-or-nil class-node 'filename)
              (error "<class> node does not have a ‘filename’ attribute"))]
     (->> source-paths
+         (--map (expand-file-name it (file-name-directory coverage-file)))
          (-map 'file-name-as-directory)
          (--map (s-concat it relative-file-name))
          (member file-name))))

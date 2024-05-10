@@ -350,9 +350,7 @@ If OUTDATED is non-nil, use a different style."
                (if python-coverage-overlay-width
                    (min
                     (line-end-position)
-                    (progn
-                      (forward-char python-coverage-overlay-width)
-                      (point)))
+                    (+ (point) python-coverage-overlay-width))
                  ;; End of statement for python
                  ;; fallback to end of line for other languages
                  (if (derived-mode-p 'python-mode 'python-ts-mode)

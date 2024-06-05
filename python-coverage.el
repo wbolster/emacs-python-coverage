@@ -350,11 +350,14 @@ If OUTDATED is non-nil, use a different style."
                (if python-coverage-overlay-width
                    (min
                     (line-end-position)
-                    (progn
-                      (forward-char python-coverage-overlay-width)
-                      (point)))
-                 (python-nav-end-of-statement)
-                 (1+ (point)))))
+                    (+ (point) python-coverage-overlay-width))
+                 ;; End of statement for python
+                 ;; fallback to end of line for other languages
+                 (if (derived-mode-p 'python-mode 'python-ts-mode)
+                     (progn
+                       (python-nav-end-of-statement)
+                       (1+ (point)))
+                   (line-end-position)))))
             (end
              ;; At least one character. This should only happen for
              ;; outdated overlays on empty lines.

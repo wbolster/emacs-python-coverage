@@ -496,5 +496,39 @@ The EVENT causes the overlays in BUFFER to get refreshed."
 
   (add-to-list 'flycheck-checkers 'python-coverage t))
 
+(after 'python-coverage
+  (define-minor-mode python-coverage-mode
+    "Toggle Python Coverage mode."
+    :lighter " PythonCoverage"
+
+    (if python-coverage-mode
+        ;; Enable Coverage mode.
+        (progn
+          ;; Save current Flycheck state.
+          (setq-local python-coverage--saved-checker flycheck-checker)
+          (setq-local python-coverage--saved-indication-mode flycheck-indication-mode)
+          (setq-local python-coverage--saved-highlighting-mode flycheck-highlighting-mode)
+          (setq-local python-coverage--saved-highlighting-style flycheck-highlighting-style)
+          ;; Switch to Coverage style.
+          (flycheck-select-checker 'python-coverage)
+          (flycheck-mode -1)
+          (setq-local flycheck-indication-mode nil)
+          (setq-local flycheck-highlighting-mode 'lines)
+          (setq-local flycheck-highlighting-style 'level-face)
+          (setq-local python-coverage--saved-error-face
+                      (face-remap-add-relative 'flycheck-error
+                                               :background "#332525"
+                                               :underline nil))
+          (flycheck-mode 1))
+
+      ;; Disable Coverage mode (restore saved style).
+      (flycheck-select-checker python-coverage--saved-checker)
+      (flycheck-mode -1)
+      (setq-local flycheck-indication-mode python-coverage--saved-indication-mode)
+      (setq-local flycheck-highlighting-mode python-coverage--saved-highlighting-mode)
+      (setq-local flycheck-highlighting-style python-coverage--saved-highlighting-style)
+      (face-remap-remove-relative python-coverage--saved-error-face)
+      (flycheck-mode 1))))
+
 (provide 'python-coverage)
 ;;; python-coverage.el ends here
